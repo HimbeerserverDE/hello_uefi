@@ -1,7 +1,6 @@
 #![no_main]
 #![no_std]
 
-use core::arch::asm;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::slice;
@@ -16,43 +15,14 @@ use uefi::proto::{
         fs::SimpleFileSystem,
     },
 };
-use uefi::table::boot::{
-    AllocateType, MemoryDescriptor, MemoryMap, MemoryType, OpenProtocolAttributes,
-    OpenProtocolParams,
-};
+use uefi::table::boot::{AllocateType, MemoryType, OpenProtocolAttributes, OpenProtocolParams};
 use uefi::CStr16;
-use x86_64::{
-    registers::control::{Cr3, Cr3Flags},
-    structures::paging::{FrameAllocator, OffsetPageTable, PageTable, PhysFrame, Size4KiB},
-    PhysAddr, VirtAddr,
-};
-
-#[derive(Debug, Copy, Clone)]
-struct UefiMemoryDescriptor(pub MemoryDescriptor);
-
-struct FrameAlloc<I, D> {
-    memory_map: I,
-}
-
-impl<I, D> FrameAlloc<I, D>
-where
-    I: ExactSizeIterator<Item = D> + Clone,
-{
-    fn new(memory_map: I) -> Self {
-        let start_frame = PhysFrame::containing_address(PhysAddr::new(0x1000));
-        Self::new_starting_at(start_frame, memory_map)
-    }
-
-    fn new_starting_at(frame: PhysFrame, memory_map: I) -> Self {
-        Self { memory_map }
-    }
-}
 
 #[entry]
 fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
 
-    info!("Initialization successful, accessing ESP...");
+    info!("Initialization successful.");
 
     let loaded_image = match unsafe {
         system_table.boot_services().open_protocol::<LoadedImage>(
@@ -101,7 +71,7 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         }
     };
 
-    let opened_handle = match unsafe {
+    let mut opened_handle = match unsafe {
         system_table
             .boot_services()
             .open_protocol::<SimpleFileSystem>(
@@ -144,7 +114,9 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         }
     };
 
-    let mut buf = [0; 500];
+    info!("Kernel file opened successfully.");
+
+    let mut buf = [0; 512];
     let file_info: &mut FileInfo = file.get_info(&mut buf).unwrap();
     let file_size = usize::try_from(file_info.file_size()).unwrap();
 
@@ -160,72 +132,7 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let file_slice = unsafe { slice::from_raw_parts_mut(file_ptr, file_size) };
     file.read(file_slice).unwrap();
 
-    info!("Kernel image loaded successfully, exiting boot services...");
+    info!("Kernel image loaded successfully.");
 
-    let (system_table, mut memory_map) = system_table.exit_boot_services();
-    memory_map.sort();
-
-    let mut frame_allocator =
-        FrameAlloc::new(memory_map.entries().copied().map(UefiMemoryDescriptor));
-
-    let phys_offset = VirtAddr::new(0);
-
-    let bootloader_page_table = {
-        let old_table = {
-            let frame = Cr3::read().0;
-            let ptr: *const PageTable = (phys_offset + frame.start_address().as_u64()).as_ptr();
-            unsafe { &*ptr }
-        };
-        let new_frame = frame_allocator
-            .allocate_frame()
-            .expect("Failed to allocate frame for new level 4 table");
-        let new_table: &mut PageTable = {
-            let ptr: *mut PageTable =
-                (phys_offset + new_frame.start_address().as_u64()).as_mut_ptr();
-            unsafe {
-                ptr.write(PageTable::new());
-                &mut *ptr
-            }
-        };
-
-        new_table[0] = old_table[0].clone();
-
-        unsafe {
-            Cr3::write(new_frame, Cr3Flags::empty());
-            OffsetPageTable::new(&mut *new_table, phys_offset)
-        }
-    };
-
-    let (kernel_page_table, kernel_level_4_frame) = {
-        let frame: PhysFrame = frame_allocator
-            .allocate_frame()
-            .expect("Failed to allocate frame for new kernel level 4 table");
-        info!("New page table at {:#?}", &frame);
-
-        let addr = phys_offset + frame.start_address().as_u64();
-        let ptr = addr.as_mut_ptr();
-        unsafe { *ptr = PageTable::new() };
-        let level_4_table = unsafe { &mut *ptr };
-        (
-            unsafe { OffsetPageTable::new(level_4_table, phys_offset) },
-            frame,
-        )
-    };
-
-    unsafe {
-        asm!(
-            r#"
-            xor rbp, rbp
-            mov cr3, {}
-            mov rsp, {}
-            push 0
-            jmp {}
-            "#,
-            in(reg) kernel_level_4_frame.start_address().as_u64(),
-            in(reg) stack_top.as_u64(),
-            in(reg) file_ptr.as_u64(),
-        );
-    }
-
-    unreachable!()
+    Status::SUCCESS
 }
