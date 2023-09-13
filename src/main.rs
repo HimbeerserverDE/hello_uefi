@@ -146,7 +146,7 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
     let elf = ElfFile::new(file_slice).unwrap();
     let entry_point = elf.header.pt2.entry_point();
-    info!("Jumping into kernel at entry point {:x}...", entry_point);
+    info!("Jumping into kernel at entry point 0x{:x}...", entry_point);
 
     unsafe {
         asm!("jmp {}", in(reg) entry_point);
