@@ -1,6 +1,7 @@
 #![no_main]
 #![no_std]
 
+use core::arch::asm;
 use core::ops::{Deref, DerefMut};
 use core::ptr;
 use core::slice;
@@ -17,6 +18,9 @@ use uefi::proto::{
 };
 use uefi::table::boot::{AllocateType, MemoryType, OpenProtocolAttributes, OpenProtocolParams};
 use uefi::CStr16;
+use xmas_elf::ElfFile;
+
+const SETUP_START: u16 = 0x01f1;
 
 #[entry]
 fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
@@ -133,6 +137,20 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     file.read(file_slice).unwrap();
 
     info!("Kernel image loaded successfully.");
+
+    let setup_end = 0x0202 + (file_slice[0x0201] as u16);
+    info!(
+        "Setup header start: 0x{:04x}, end: 0x{:04x}",
+        SETUP_START, setup_end
+    );
+
+    let elf = ElfFile::new(file_slice).unwrap();
+    let entry_point = elf.header.pt2.entry_point();
+    info!("Jumping into kernel at entry point {:x}...", entry_point);
+
+    unsafe {
+        asm!("jmp {}", in(reg) entry_point);
+    }
 
     Status::SUCCESS
 }
