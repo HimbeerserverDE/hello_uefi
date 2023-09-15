@@ -22,29 +22,29 @@ use xmas_elf::ElfFile;
 
 const SETUP_START: u16 = 0x01f1;
 
-// #[repr(C, packed(2))]
-// struct Gdtr {
-//     limit: u16,
-//     base: u64,
-// }
-//
-// #[no_mangle]
-// static GDT: [u64; 6] = [
-//     0x0000000000000000,
-//     0x0000000000000000,
-//     0x00af9a000000ffff,
-//     0x00cf92000000ffff,
-//     // 0x00af9b000000ffff,
-//     // 0x00cf93000000ffff,
-//     0x0080890000000000,
-//     0x0000000000000000,
-// ];
-//
-// #[no_mangle]
-// static mut GDTR: Gdtr = Gdtr {
-//     limit: 6 * 8 - 1,
-//     base: 0,
-// };
+#[repr(C, packed(2))]
+struct Gdtr {
+    limit: u16,
+    base: u64,
+}
+
+#[no_mangle]
+static GDT: [u64; 6] = [
+    0x0000000000000000,
+    0x0000000000000000,
+    0x00af9a000000ffff,
+    0x00cf92000000ffff,
+    // 0x00af9b000000ffff,
+    // 0x00cf93000000ffff,
+    0x0080890000000000,
+    0x0000000000000000,
+];
+
+#[no_mangle]
+static mut GDTR: Gdtr = Gdtr {
+    limit: 6 * 8 - 1,
+    base: 0,
+};
 
 #[entry]
 fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
@@ -171,28 +171,31 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     let elf = ElfFile::new(file_slice).unwrap();
     let entry_point = elf.header.pt2.entry_point();
 
-    // let gdtr_base = GDT.as_ptr() as u64;
-    // info!("Setting up GDT with base address 0x{:x}...", gdtr_base);
+    let gdtr_base = GDT.as_ptr() as u64;
+    info!("Setting up GDT with base address 0x{:x}...", gdtr_base);
 
-    // unsafe {
-    //     GDTR.base = gdtr_base;
+    unsafe {
+        GDTR.base = gdtr_base;
 
-    //     asm!(
-    //         r#"
-    //         cli
-    //         lgdt [{}]
+        asm!(
+            r#"
+            cli
+            lgdt [{}]
 
-    //         mov ax, 0x18
-    //         mov ds, ax
-    //         mov es, ax
-    //         mov fs, ax
-    //         mov gs, ax
-    //         mov ss, ax
-    //         "#,
-    //         in(reg) &GDTR,
-    //         options(readonly, nostack, preserves_flags),
-    //     );
-    // }
+            mov ax, 0x18
+            mov ds, ax
+            mov es, ax
+            mov fs, ax
+            mov gs, ax
+            mov ss, ax
+            "#,
+            in(reg) &GDTR,
+            options(readonly, nostack, preserves_flags),
+        );
+
+        let _x = entry_point;
+        loop {}
+    }
 
     info!("Jumping into kernel at entry point 0x{:x}...", entry_point);
 
