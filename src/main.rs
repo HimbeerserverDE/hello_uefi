@@ -47,6 +47,9 @@ static mut GDTR: Gdtr = Gdtr {
     base: 0,
 };
 
+#[no_mangle]
+static mut PAGE_TABLE: [u64; 6 * 512] = [0; 6 * 512];
+
 #[entry]
 fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
     uefi_services::init(&mut system_table).unwrap();
@@ -169,6 +172,27 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         SETUP_START, setup_end
     );
 
+    let pg_ptr = unsafe { PAGE_TABLE.as_mut_ptr() };
+
+    info!("Creating page table at 0x{:x}...", pg_ptr as u64);
+
+    for i in 0..6 * 512 {
+        unsafe { *pg_ptr.add(i) = 0 };
+    }
+
+    // L4
+    unsafe { *pg_ptr = (pg_ptr as u64 + 0x1000) | 0x7 };
+
+    // L3
+    for i in 0..4 {
+        unsafe { *pg_ptr.add(0x1000 + i) = (pg_ptr as u64 + 0x2000 + 0x1000 * (i as u64)) | 0x7 };
+    }
+
+    // L2
+    for i in 0..2048 {
+        unsafe { *pg_ptr.add(0x2000 + i) = (0x200000 * (i as u64)) | 0x183 };
+    }
+
     let elf = ElfFile::new(file_slice).unwrap();
     let entry_point = elf.header.pt2.entry_point();
 
@@ -201,11 +225,34 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         );
     }
 
-    // info!("Jumping into kernel at entry point 0x{:x}...", entry_point);
+    // info!("Enabling PAE...");
 
     unsafe {
-        asm!("jmp {}", in(reg) entry_point);
+        asm!(
+            r#"
+            mov rax, cr4
+            or rax, 0x20
+            mov cr4, rax
+            "#,
+        );
     }
 
-    Status::SUCCESS
+    // info!("Enabling paging...");
+
+    unsafe {
+        asm!(
+            r#"
+            mov cr3, {}
+            hlt
+            "#, in(reg) pg_ptr as u64
+        );
+    }
+
+    // info!("Jumping into kernel at entry point 0x{:x}...", entry_point);
+
+    // unsafe {
+    //     asm!("jmp {}", in(reg) entry_point);
+    // }
+
+    loop {}
 }
