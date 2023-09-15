@@ -1,5 +1,6 @@
 #![no_main]
 #![no_std]
+#![allow(named_asm_labels)]
 
 use core::arch::asm;
 use core::ops::{Deref, DerefMut};
@@ -188,12 +189,17 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
             mov fs, ax
             mov gs, ax
             mov ss, ax
+
+            lea rax, [white]
+            push 0x10
+            push rax
+            retfq
+            white:
             "#,
             in(reg) &GDTR,
             options(readonly, nostack, preserves_flags),
         );
 
-        let _x = entry_point;
         loop {}
     }
 
