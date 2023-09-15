@@ -123,8 +123,8 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
     let mut root = file_system.open_volume().unwrap();
     let mut buf = [0u16; 256];
-    assert!("vmlinuz".len() < 256);
-    let filename = CStr16::from_str_with_buf("vmlinuz".trim_end_matches('\0'), &mut buf)
+    assert!("vmlinux".len() < 256);
+    let filename = CStr16::from_str_with_buf("vmlinux".trim_end_matches('\0'), &mut buf)
         .expect("Failed to convert string to utf16");
 
     let file_handle = match root.open(filename, FileMode::Read, FileAttribute::empty()) {
@@ -199,11 +199,9 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
             in(reg) &GDTR,
             options(readonly, nostack, preserves_flags),
         );
-
-        loop {}
     }
 
-    info!("Jumping into kernel at entry point 0x{:x}...", entry_point);
+    // info!("Jumping into kernel at entry point 0x{:x}...", entry_point);
 
     unsafe {
         asm!("jmp {}", in(reg) entry_point);
