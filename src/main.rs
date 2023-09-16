@@ -21,7 +21,7 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
         img
     };
 
-    let cmdline = cstr16!("initrd=\\initramfs-linux-hardened.img loglevel=3 quiet cryptdevice=UUID=48a1c620-1a69-4daf-9e16-110670e0b16e:root_crypt root=UUID=d1752d46-78cf-44a2-8bc7-e67086f59bea ro rootflags=subvol=root");
+    let cmdline = cstr16!("loglevel=3 quiet cryptdevice=UUID=48a1c620-1a69-4daf-9e16-110670e0b16e:root_crypt root=UUID=d1752d46-78cf-44a2-8bc7-e67086f59bea ro rootflags=subvol=root");
 
     let img = bs
         .load_image(
