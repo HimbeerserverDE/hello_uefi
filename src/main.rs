@@ -15,13 +15,13 @@ fn main(image_handle: Handle, mut system_table: SystemTable<Boot>) -> Status {
 
     let kernel = {
         let mut fs = bs.get_image_file_system(bs.image_handle()).unwrap();
-        let img = fs.read(cstr16!("vmlinuz")).unwrap();
+        let img = fs.read(cstr16!("vmlinuz-linux-hardened")).unwrap();
 
         info!("Kernel image loaded successfully.");
         img
     };
 
-    let cmdline = cstr16!("initrd=\\initrd.img");
+    let cmdline = cstr16!("initrd=\\initramfs-linux-hardened.img loglevel=3 quiet cryptdevice=UUID=48a1c620-1a69-4daf-9e16-110670e0b16e:root_crypt root=UUID=d1752d46-78cf-44a2-8bc7-e67086f59bea ro rootflags=subvol=root");
 
     let img = bs
         .load_image(
